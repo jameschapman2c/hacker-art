@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Contribution graph art: preview, build, verify and publish. See README.md.
+set -euo pipefail
+exec node "$(dirname "$0")/../scripts/art.mjs" "$@"

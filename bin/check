@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Local CI gate: shellcheck every script in bin/, then run Node's test runner on its default test file patterns.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+shellcheck bin/*
+node --test
