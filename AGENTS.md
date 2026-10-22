@@ -21,13 +21,17 @@ Draws art on the `jameschapman2c` GitHub contributions graph with backdated comm
 
 ## Overrides
 
-None.
+- **Art refreshes replace `main`'s history** (Nico, 2026-10-22). `main` holds only generated art
+  commits, so when publishing a refresh the art script may replace `main`'s history with a
+  force-push. This applies to `main` in this repo only, never to any other branch or repo. The
+  regenerated history must keep `main`'s current tracked files, and the push uses
+  `--force-with-lease` against the `origin/main` it was built from, so merged work is never lost.
+  Everything else, including code changes, follows `core-sdlc`.
 
 ## Project notes
 
 - `main`'s history is generated art, not a record of changes: an `init` commit followed by 392
   empty `gitfiti` commits backdated from June 2025 to January 2026, all authored
   `jamesbot2c <jamesbot@twoscomplement.io>`. Their author dates place the pixels on the graph.
-  Keep that history as it is. How rewritten art history is published is Nico's decision and is
-  not yet an Override, so never force-push or rewrite `main`.
+  Only the art script's refresh rewrites it (see Overrides); never rewrite it by hand.
 - `gitfiti` and `README.md` are empty files from the `init` commit.
