@@ -44,6 +44,9 @@ Draws art on the `jameschapman2c` GitHub contributions graph with backdated comm
   at 03:30 Denver time, so the text keeps its 2 weeks of left padding. A branch made before a
   refresh no longer shares history with `main`: start a fresh branch from `origin/main` and
   cherry-pick its commits.
+- GitHub counts only the newest 1000 commits of a push toward contributions (measured on
+  2026-10-22: a 1,310-commit push lost its oldest 310). `publish` therefore pushes in steps of at
+  most 500 new commits; never push art history in one larger push.
 - Squash-merged PRs land on `main` as commits by the same account and add contributions on their
   real dates, so `bin/art verify` reports those days until the next refresh.
 - `gitfiti` and `README.md` started as empty files from the `init` commit.

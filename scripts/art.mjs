@@ -24,7 +24,8 @@ options:
   --source <ref>   project files for build (default origin/main)
   --branch <name>  branch for build (default art/preview)
   --repo <dir>     repository (default this checkout)
-  --yes            publish for real`;
+  --yes            publish for real
+  --push-limit <n> most new commits per push (default 500; GitHub counts only the newest 1000 of a push)`;
 
 const REMOTE = 'origin';
 let repo = resolve(dirname(new URL(import.meta.url).pathname), '..');
@@ -44,6 +45,7 @@ function main(argv) {
       branch: { type: 'string', default: 'art/preview' },
       repo: { type: 'string' },
       yes: { type: 'boolean', default: false },
+      'push-limit': { type: 'string', default: '500' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -57,6 +59,7 @@ function main(argv) {
   if (values.month && command !== 'preview') throw new Error('--month is only for preview');
   if (values.month && !/^([1-9]|1[0-2])$/.test(values.month)) throw new Error('--month must be 1 to 12');
   if (values.refresh && !/^[1-9]\d*$/.test(values.refresh)) throw new Error('--refresh must be a number of days');
+  if (!/^[1-9]\d*$/.test(values['push-limit'])) throw new Error('--push-limit must be a positive integer');
   const plan = planArt(config, today, values.month ? { month: Number(values.month) } : {});
   return commands[command]({ config, plan, values, ref });
 }
@@ -125,12 +128,28 @@ function publish({ config, plan, values }) {
   const tip = buildHistory(repo, config, plan, tree);
   check(config, plan, tip, tree);
   if (tip === old) return console.log(`publish   ${REMOTE}/main is already ${tip}; nothing to do`);
+  const stops = pushStops(old, tip, Number(values['push-limit']));
   if (!values.yes) {
-    return console.log(`dry run   would force-push ${tip} over ${REMOTE}/main ${old}; rerun with --yes to publish`);
+    return console.log(`dry run   would force-push ${tip} over ${REMOTE}/main ${old} in ${stops.length} pushes; rerun with --yes to publish`);
   }
-  git(repo, ['push', `--force-with-lease=refs/heads/main:${old}`, REMOTE, `${tip}:refs/heads/main`]);
+  // GitHub counts only the newest 1000 commits of a push toward contributions, so the history goes
+  // up in steps. The first may replace main (with a lease); the rest are fast-forwards.
+  stops.forEach((stop, i) => {
+    const lease = i === 0 ? [`--force-with-lease=refs/heads/main:${old}`] : [];
+    git(repo, ['push', ...lease, REMOTE, `${stop}:refs/heads/main`]);
+    console.log(`pushed    ${i + 1}/${stops.length} ${stop}`);
+  });
   console.log(`published ${REMOTE}/main ${old} -> ${tip}`);
   updateLocalMain(old, tip);
+}
+
+// Commits to push in order so that no push adds more than `limit` commits. When main is already
+// partway along the new history (an interrupted publish), it continues from there.
+function pushStops(old, tip, limit) {
+  const chain = git(repo, ['rev-list', '--reverse', tip]).split('\n');
+  const stops = [];
+  for (let i = chain.indexOf(old) + limit; i < chain.length - 1; i += limit) stops.push(chain[i]);
+  return [...stops, tip];
 }
 
 // Moves local main to the new tip when it had nothing the old remote main lacked, so later fast-forwards

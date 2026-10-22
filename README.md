@@ -39,7 +39,8 @@ bin/art publish --yes                                              # force-push 
 
 `publish` fetches `origin/main`, keeps its files in the new root commit, checks every day of the
 graph against the plan, and pushes with `--force-with-lease` against the `origin/main` it built
-from. Local `main` moves to the new history when it matched `origin/main`; the files do not
+from. GitHub counts only the newest 1000 commits of a push toward contributions, so it pushes the
+history in steps of at most 500 new commits (`--push-limit`). Local `main` moves to the new history when it matched `origin/main`; the files do not
 change. Other clones need `git fetch` and `git reset --keep origin/main`, and open branches must
 be rebased onto the new `main`.
 

@@ -93,6 +93,35 @@ test('publish is a dry run without --yes, then force-pushes main and moves local
   assert.match(art(repo, 'publish', '--yes').output, /nothing to do/);
 });
 
+test('publish pushes in steps of at most --push-limit new commits', () => {
+  const remote = join(root, 'remote-steps.git');
+  spawnSync('git', ['init', '-q', '--bare', '-b', 'main', remote]);
+  git(remote, ['config', 'core.logAllRefUpdates', 'always']);
+  const repo = project('g');
+  git(repo, ['remote', 'add', 'origin', remote]);
+  git(repo, ['push', '-q', 'origin', 'main']);
+
+  const result = art(repo, 'publish', '--yes', '--push-limit', '3');
+  assert.equal(result.status, 0, result.output);
+  const tip = git(remote, ['rev-parse', 'main']);
+  const updates = git(remote, ['reflog', '--format=%H', 'main']).split('\n').reverse().slice(1);
+  assert.equal(updates.at(-1), tip);
+  assert.equal(updates.length, Math.ceil((plan.total + 1) / 3));
+  assert.equal(Number(git(remote, ['rev-list', '--count', updates[0]])), 3);
+  for (let i = 1; i < updates.length; i += 1) {
+    const added = Number(git(remote, ['rev-list', '--count', `${updates[i - 1]}..${updates[i]}`]));
+    assert.ok(added >= 1 && added <= 3, `push ${i} added ${added}`);
+  }
+  assert.match(art(repo, 'verify').output, /every day in the graph matches/);
+
+  // An interrupted publish continues from where main stopped.
+  git(repo, ['push', '-q', '--force', 'origin', `${updates[1]}:refs/heads/main`]);
+  const resumed = art(repo, 'publish', '--yes', '--push-limit', '3');
+  assert.equal(resumed.status, 0, resumed.output);
+  assert.equal(git(remote, ['rev-parse', 'main']), tip);
+  assert.equal((resumed.output.match(/^pushed/gm) ?? []).length, updates.length - 2);
+});
+
 test('publish moves a local main that is behind origin/main, and leaves one with its own commits', () => {
   const remote = join(root, 'remote-behind.git');
   spawnSync('git', ['init', '-q', '--bare', '-b', 'main', remote]);
