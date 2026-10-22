@@ -40,6 +40,10 @@ Draws art on the `jameschapman2c` GitHub contributions graph with backdated comm
   `jameschapman2c` (`james@twoscomplement.io`). Same config, files and `--today` give the same
   hashes. `bin/art publish --yes` is the only way to rewrite `main` (see Overrides); never rewrite
   it by hand, and show Nico `bin/art preview` before publishing a new text.
+- A Supervisor command schedule, **Hacker art refresh**, runs `bin/art publish --yes` every 14 days
+  at 03:30 Denver time, so the text keeps its 2 weeks of left padding. A branch made before a
+  refresh no longer shares history with `main`: start a fresh branch from `origin/main` and
+  cherry-pick its commits.
 - Squash-merged PRs land on `main` as commits by the same account and add contributions on their
   real dates, so `bin/art verify` reports those days until the next refresh.
 - `gitfiti` and `README.md` started as empty files from the `init` commit.

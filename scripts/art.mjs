@@ -133,19 +133,29 @@ function publish({ config, plan, values }) {
   updateLocalMain(old, tip);
 }
 
-// Moves local main to the new tip when it matched the old remote main. The trees are equal, so no files change.
+// Moves local main to the new tip when it had nothing the old remote main lacked, so later fast-forwards
+// keep working. When it matched the old remote main the trees are equal and no files change.
 function updateLocalMain(old, tip) {
   const local = git(repo, ['rev-parse', '--verify', '-q', 'refs/heads/main']);
-  if (local !== old) return console.log(`local     main is ${local}, not ${old}; left as is`);
+  if (local !== old && !isAncestor(local, old)) return console.log(`local     main has commits not on ${REMOTE}/main; left as is`);
   const head = currentBranch();
   if (head === 'main') {
     git(repo, ['reset', '--keep', tip]);
   } else if (git(repo, ['worktree', 'list', '--porcelain']).split('\n').includes('branch refs/heads/main')) {
     return console.log('local     main is checked out in another worktree; run `git reset --keep origin/main` there');
   } else {
-    git(repo, ['update-ref', 'refs/heads/main', tip, old]);
+    git(repo, ['update-ref', 'refs/heads/main', tip, local]);
   }
   console.log(`local     main -> ${tip}`);
+}
+
+function isAncestor(commit, of) {
+  try {
+    git(repo, ['merge-base', '--is-ancestor', commit, of]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function currentBranch() {

@@ -93,6 +93,35 @@ test('publish is a dry run without --yes, then force-pushes main and moves local
   assert.match(art(repo, 'publish', '--yes').output, /nothing to do/);
 });
 
+test('publish moves a local main that is behind origin/main, and leaves one with its own commits', () => {
+  const remote = join(root, 'remote-behind.git');
+  spawnSync('git', ['init', '-q', '--bare', '-b', 'main', remote]);
+  const repo = project('f');
+  git(repo, ['remote', 'add', 'origin', remote]);
+  git(repo, ['push', '-q', 'origin', 'main']);
+  const behind = git(repo, ['rev-parse', 'main']);
+  git(repo, ['commit', '-q', '--allow-empty', '-m', 'Merged elsewhere']);
+  git(repo, ['push', '-q', 'origin', 'main']);
+  git(repo, ['reset', '-q', '--keep', behind]);
+
+  const result = art(repo, 'publish', '--yes');
+  assert.equal(result.status, 0, result.output);
+  assert.equal(git(repo, ['rev-parse', 'main']), git(remote, ['rev-parse', 'main']));
+  assert.equal(git(repo, ['status', '--porcelain']), '');
+
+  git(repo, ['commit', '-q', '--allow-empty', '-m', 'Local only']);
+  const local = git(repo, ['rev-parse', 'main']);
+  git(repo, ['push', '-q', 'origin', 'main']);
+  git(repo, ['reset', '-q', '--keep', 'HEAD~1']);
+  git(repo, ['commit', '-q', '--allow-empty', '-m', 'Diverged']);
+  const diverged = git(repo, ['rev-parse', 'main']);
+  assert.notEqual(diverged, local);
+  const again = art(repo, 'publish', '--yes');
+  assert.equal(again.status, 0, again.output);
+  assert.match(again.output, /has commits not on origin\/main; left as is/);
+  assert.equal(git(repo, ['rev-parse', 'main']), diverged);
+});
+
 test('verify fails when a ref does not match the plan', () => {
   const repo = project('e');
   const result = art(repo, 'verify', 'main');
