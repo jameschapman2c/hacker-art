@@ -30,8 +30,16 @@ Draws art on the `jameschapman2c` GitHub contributions graph with backdated comm
 
 ## Project notes
 
-- `main`'s history is generated art, not a record of changes: an `init` commit followed by 392
-  empty `gitfiti` commits backdated from June 2025 to January 2026, all authored
-  `jamesbot2c <jamesbot@twoscomplement.io>`. Their author dates place the pixels on the graph.
-  Only the art script's refresh rewrites it (see Overrides); never rewrite it by hand.
-- `gitfiti` and `README.md` are empty files from the `init` commit.
+- `main`'s history is generated art, not a record of changes. Until the first refresh it is an
+  `init` commit, 392 empty `gitfiti` commits (June 2025 to January 2026) authored
+  `jamesbot2c <jamesbot@twoscomplement.io>`, and the core PRs. That email is not on the
+  `jameschapman2c` account, so those commits never showed on its graph.
+- `bin/art` generates the art from `art.config.json` (usage in `README.md`): a root commit with
+  `origin/main`'s files dated the day before the graph starts, then empty backdated commits
+  authored by the config's `author`, which must be an email GitHub attributes to
+  `jameschapman2c` (`james@twoscomplement.io`). Same config, files and `--today` give the same
+  hashes. `bin/art publish --yes` is the only way to rewrite `main` (see Overrides); never rewrite
+  it by hand, and show Nico `bin/art preview` before publishing a new text.
+- Squash-merged PRs land on `main` as commits by the same account and add contributions on their
+  real dates, so `bin/art verify` reports those days until the next refresh.
+- `gitfiti` and `README.md` started as empty files from the `init` commit.
