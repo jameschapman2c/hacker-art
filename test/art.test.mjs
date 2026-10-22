@@ -6,6 +6,7 @@ import {
   asciiGraph,
   cellDate,
   contributionWindow,
+  dayNoise,
   epochSeconds,
   loadConfig,
   placeArt,
@@ -13,9 +14,11 @@ import {
   renderText,
   todayIn,
 } from '../lib/art.mjs';
-import { graphPng } from '../lib/png.mjs';
+import { graphPng, sheetPng } from '../lib/png.mjs';
 
 const config = (overrides = {}) => loadConfig({ ...JSON.parse(readFileSync(new URL('../art.config.json', import.meta.url))), ...overrides });
+// Only the text, as the generator drew it before icons and background.
+const textOnly = (overrides = {}) => config({ icon: { enabled: false }, background: { density: 0 }, ...overrides });
 
 // The art on main before the generator, decoded from its commits (weeks from Sunday 2025-06-01).
 const ORIGINAL_ART = [
@@ -68,42 +71,85 @@ test('text rendering: lowercase, spacing, custom glyphs and levels', () => {
 });
 
 test('placement aligns inside the fully visible columns and margins', () => {
-  const window = contributionWindow('2026-10-22'); // 52 full columns, margin.left 1: columns 1 to 51
-  assert.equal(placeArt(35, window, config({ align: 'left' })), 1);
+  const window = contributionWindow('2026-10-22'); // 52 full columns, margin.left 2: columns 2 to 51
+  assert.equal(placeArt(35, window, config()), 2, 'two weeks of padding on the left');
   assert.equal(placeArt(35, window, config({ align: 'right' })), 17);
   assert.equal(placeArt(35, window, config({ align: 'center' })), 9);
-  assert.equal(placeArt(35, window, config({ align: 'center', offset: -8 })), 1);
+  assert.equal(placeArt(35, window, config({ align: 'center', offset: -7 })), 2);
   assert.equal(placeArt(35, window, config({ align: 'right', margin: { right: 3 } })), 14);
-  assert.throws(() => placeArt(35, window, config({ align: 'center', offset: 9 })), /outside columns 1 to 51/);
-  assert.throws(() => placeArt(52, window, config()), /52 columns wide but only 51 fit/);
+  assert.throws(() => placeArt(35, window, config({ align: 'center', offset: -8 })), /outside columns 2 to 51/);
+  assert.throws(() => placeArt(51, window, config()), /51 columns wide but only 50 fit/);
 });
 
 test('plan puts every pixel on a visible day in the window, never after today', () => {
-  for (const today of ['2026-10-22', '2026-10-24', '2026-10-25', '2027-01-01']) {
+  for (const today of ['2026-10-22', '2026-10-24', '2026-10-25', '2027-01-01', '2027-03-15']) {
     for (const align of ['left', 'center', 'right']) {
-      const plan = planArt(config({ align }), today);
-      assert.equal(plan.days.length, 98);
-      assert.equal(plan.total, 980);
+      const text = planArt(textOnly({ align }), today);
+      assert.equal(text.days.length, 98);
+      assert.equal(text.total, 980);
+      const plan = planArt(config(), today);
       for (const day of plan.days) {
         assert.ok(day.date >= plan.window.start && day.date <= today, `${day.date} outside window for ${today}`);
-        assert.equal(day.commits, 10);
+        assert.equal(day.commits, config().levels[day.level]);
       }
       assert.ok(plan.baseDate < plan.window.start);
     }
   }
 });
 
-test('the plan for 2026-10-22 is the original art shifted into the current window', () => {
-  const plan = planArt(config(), '2026-10-22');
-  assert.equal(plan.firstColumn, 9);
-  assert.equal(plan.days[0].date, '2025-12-21');
-  assert.equal(plan.days.at(-1).date, '2026-08-22');
-  const lines = asciiGraph(plan).split('\n').map((line) => line.slice(4 + 9, 4 + 9 + 35).replaceAll('4', '#').replace(/\.+$/, ''));
+test('the text is the original art shifted into the current window', () => {
+  const plan = planArt(textOnly(), '2026-10-22');
+  assert.equal(plan.firstColumn, 2);
+  assert.equal(plan.days[0].date, '2025-11-02');
+  const lines = asciiGraph(plan).split('\n').map((line) => line.slice(4 + 2, 4 + 2 + 35).replaceAll('4', '#').replace(/\.+$/, ''));
   assert.deepEqual(lines, ORIGINAL_ART);
+  // Two weeks later, before a refresh, the same commits sit at the left edge of the graph.
+  const later = contributionWindow('2026-11-05');
+  assert.equal(later.start, '2025-11-02');
+});
+
+test("the icon is today's month, centered in the free columns right of the text", () => {
+  const october = planArt(config(), '2026-10-22');
+  assert.deepEqual({ month: october.icon.month, column: october.icon.column, width: october.icon.width }, { month: 10, column: 42, width: 7 });
+  assert.equal(planArt(config(), '2026-11-05').icon.month, 11);
+  assert.equal(planArt(config(), '2026-10-22', { month: 3 }).icon.width, 9);
+  const icons = october.days.filter((day) => day.kind === 'icon');
+  assert.ok(icons.every((day) => day.date >= cellDate(october.window, 42, 0) && day.date <= cellDate(october.window, 48, 6)));
+  assert.equal(icons.length, config().icons[10].join('').replaceAll('.', '').length);
+  assert.equal(planArt(config({ icon: { enabled: false } }), '2026-10-22').icon, null);
+  assert.equal(planArt(config({ icons: {} }), '2026-10-22').icon, null);
+  assert.equal(planArt(config({ icon: { align: 'right' } }), '2026-10-22').icon.column, 45);
+  assert.throws(() => planArt(config({ icon: { gap: 12 } }), '2026-10-22'), /Icon for month 10 is 7 columns wide but only 3 fit/);
+  for (let month = 1; month <= 12; month += 1) {
+    for (const today of ['2026-10-22', '2026-10-25']) assert.ok(planArt(config(), today, { month }).icon, `month ${month} fits`);
+  }
+});
+
+test('background: sparse lightest shade, fixed per calendar day, clear of the art', () => {
+  const plan = planArt(config(), '2026-10-22');
+  const background = plan.days.filter((day) => day.kind === 'background');
+  const open = 371 - plan.days.filter((day) => day.kind !== 'background').length;
+  assert.ok(background.length > open * 0.1 && background.length < open * 0.3, `${background.length} of ${open}`);
+  assert.ok(background.every((day) => day.level === 1 && day.commits === 1));
+  const columns = background.map((day) => Math.floor((Date.parse(day.date) - Date.parse(plan.window.start)) / 86_400_000 / 7));
+  assert.ok(columns.every((column) => column < 41 || column > 49), 'icon columns and one each side stay clear');
+  // A refresh keeps the same background days wherever the art does not cover them.
+  const later = planArt(config(), '2026-11-05');
+  const laterKinds = new Map(later.days.map((day) => [day.date, day.kind]));
+  for (const day of background) {
+    if (day.date >= later.window.start && !['text', 'icon'].includes(laterKinds.get(day.date))) {
+      const column = Math.floor((Date.parse(day.date) - Date.parse(later.window.start)) / 86_400_000 / 7);
+      if (column < 41 || column > 49) assert.equal(laterKinds.get(day.date), 'background', day.date);
+    }
+  }
+  assert.equal(dayNoise('hacker-art', '2026-01-01'), dayNoise('hacker-art', '2026-01-01'));
+  assert.notEqual(dayNoise('hacker-art', '2026-01-01'), dayNoise('other', '2026-01-01'));
+  assert.equal(planArt(config({ background: { density: 0 } }), '2026-10-22').days.filter((day) => day.kind === 'background').length, 0);
 });
 
 test('planning is deterministic', () => {
-  assert.deepEqual(planArt(config({ text: 'Hello 2C!' }), '2026-10-22'), planArt(config({ text: 'Hello 2C!' }), '2026-10-22'));
+  assert.deepEqual(planArt(config(), '2026-10-22'), planArt(config(), '2026-10-22'));
+  assert.deepEqual(planArt(textOnly({ text: 'Hello 2C!' }), '2026-10-22'), planArt(textOnly({ text: 'Hello 2C!' }), '2026-10-22'));
 });
 
 test('config validation', () => {
@@ -115,6 +161,17 @@ test('config validation', () => {
   assert.throws(() => config({ author: { email: 'nobody' } }), /author needs/);
   assert.throws(() => config({ glyphs: { x: ['#'] } }), /needs 7 rows/);
   assert.throws(() => config({ font: 'comic' }), /unknown font/);
+  assert.throws(() => config({ icons: { 13: ['#', '#', '#', '#', '#', '#', '#'] } }), /months 1 to 12/);
+  assert.throws(() => config({ icons: { 1: ['#'] } }), /needs 7 rows/);
+  assert.throws(() => config({ icon: { level: 5 } }), /icon.level/);
+  assert.throws(() => config({ background: { density: 2 } }), /density/);
+  assert.throws(() => config({ background: { clear: { sky: 1 } } }), /background.clear/);
+});
+
+test('preview sheets stack labeled panels', () => {
+  const plan = planArt(config(), '2026-10-22');
+  const png = sheetPng([{ label: 'Published', plan }, { label: 'Later', plan, view: '2026-11-05' }], { cell: 2, gap: 1, pad: 1 });
+  assert.equal(png.readUInt32BE(20), 1 + 2 * (7 * 3 + 10 + 20 + 1));
 });
 
 test('preview PNG is a valid image of the 53 by 7 grid', () => {

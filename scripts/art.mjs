@@ -2,14 +2,16 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { asciiGraph, loadConfig, planArt, todayIn } from '../lib/art.mjs';
+import { addDays, asciiGraph, loadConfig, planArt, todayIn } from '../lib/art.mjs';
 import { buildHistory, commitsPerDay, compareWithPlan, git } from '../lib/git.mjs';
-import { graphPng } from '../lib/png.mjs';
+import { graphPng, sheetPng } from '../lib/png.mjs';
 
 const USAGE = `usage: bin/art <command> [options]
 
 commands:
   preview          print the planned graph and write a PNG of it
+                   --months: one panel per month icon; --refresh <days>: as published, as seen
+                   <days> later, and after a refresh then
   build            build the history on a local branch and check it (no push)
   verify [ref]     count commits per day on ref (default origin/main) against the plan
   publish          build from origin/main and force-push it to main; a dry run unless --yes
@@ -18,6 +20,7 @@ options:
   --config <file>  config file (default art.config.json)
   --today <date>   last day of the graph, YYYY-MM-DD (default today in the config timezone)
   --out <file>     preview PNG (default tmp/art-preview.png)
+  --month <1-12>   preview with this month's icon
   --source <ref>   project files for build (default origin/main)
   --branch <name>  branch for build (default art/preview)
   --repo <dir>     repository (default this checkout)
@@ -34,6 +37,9 @@ function main(argv) {
       config: { type: 'string', default: 'art.config.json' },
       today: { type: 'string' },
       out: { type: 'string', default: 'tmp/art-preview.png' },
+      month: { type: 'string' },
+      months: { type: 'boolean', default: false },
+      refresh: { type: 'string' },
       source: { type: 'string', default: `${REMOTE}/main` },
       branch: { type: 'string', default: 'art/preview' },
       repo: { type: 'string' },
@@ -45,9 +51,13 @@ function main(argv) {
   if (values.help || !command) return console.log(USAGE);
   if (values.repo) repo = resolve(values.repo);
   const config = loadConfig(JSON.parse(readFileSync(resolve(repo, values.config), 'utf8')));
-  const plan = planArt(config, values.today ?? todayIn(config.timezone));
+  const today = values.today ?? todayIn(config.timezone);
   const commands = { preview, build, verify, publish };
   if (!commands[command]) throw new Error(`Unknown command "${command}"\n\n${USAGE}`);
+  if (values.month && command !== 'preview') throw new Error('--month is only for preview');
+  if (values.month && !/^([1-9]|1[0-2])$/.test(values.month)) throw new Error('--month must be 1 to 12');
+  if (values.refresh && !/^[1-9]\d*$/.test(values.refresh)) throw new Error('--refresh must be a number of days');
+  const plan = planArt(config, today, values.month ? { month: Number(values.month) } : {});
   return commands[command]({ config, plan, values, ref });
 }
 
@@ -55,16 +65,33 @@ function summary(config, plan) {
   const { window, art, firstColumn, days } = plan;
   console.log(`text      ${JSON.stringify(config.text)} (${art.width} columns, ${config.align}, offset ${config.offset})`);
   console.log(`graph     ${window.start} to ${window.end}, ${window.columns} weeks; art in columns ${firstColumn} to ${firstColumn + art.width - 1}`);
+  const icon = plan.icon ? `${MONTHS[plan.icon.month - 1]} icon in columns ${plan.icon.column} to ${plan.icon.column + plan.icon.width - 1}` : 'no icon';
+  console.log(`extras    ${icon}, ${days.filter((day) => day.kind === 'background').length} background days`);
   console.log(`art days  ${days[0]?.date} to ${days.at(-1)?.date}, ${days.length} days, ${plan.total} commits`);
   console.log(`author    ${config.author.name} <${config.author.email}>, ${config.time} ${config.timezone}`);
 }
 
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 function preview({ config, plan, values }) {
   summary(config, plan);
   console.log(`\n${asciiGraph(plan)}\n`);
+  let png;
+  if (values.months) {
+    png = sheetPng(MONTHS.map((name, i) => ({ label: name, plan: planArt(config, plan.today, { month: i + 1 }) })));
+  } else if (values.refresh) {
+    const later = addDays(plan.today, Number(values.refresh));
+    png = sheetPng([
+      { label: `${plan.today}: published`, plan },
+      { label: `${later}: before the refresh`, plan, view: later },
+      { label: `${later}: after the refresh`, plan: planArt(config, later) },
+    ]);
+  } else {
+    png = graphPng(plan);
+  }
   const out = resolve(repo, values.out);
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, graphPng(plan));
+  writeFileSync(out, png);
   console.log(`preview   ${out}`);
 }
 
