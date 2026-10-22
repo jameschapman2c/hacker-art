@@ -1,0 +1,16 @@
+{
+  "text": "HACKER",
+  "font": "5x7",
+  "glyphs": {},
+  "letterSpacing": 1,
+  "align": "center",
+  "offset": 0,
+  "margin": { "left": 1, "right": 0 },
+  "textLevel": 4,
+  "levels": { "1": 1, "2": 3, "3": 6, "4": 10 },
+  "author": { "name": "jameschapman2c", "email": "james@twoscomplement.io" },
+  "time": "12:00:00",
+  "timezone": "+0000",
+  "message": "gitfiti",
+  "baseMessage": "Add project files"
+}
