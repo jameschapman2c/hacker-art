@@ -21,6 +21,9 @@ Object.assign(process.env, {
   GIT_COMMITTER_EMAIL: 'dev@example.com',
   GIT_CONFIG_GLOBAL: '/dev/null',
   GIT_CONFIG_NOSYSTEM: '1',
+  // Never reach GitHub from a test: gh fails to authenticate and git cannot prompt.
+  GH_TOKEN: 'hacker-art-tests-are-offline',
+  GIT_TERMINAL_PROMPT: '0',
 });
 
 function project(name, files = {}) {
@@ -110,6 +113,17 @@ test('publish refuses, with exit 3 and the settings link, when the repository ho
   assert.equal(later.status, 3, later.output);
   assert.match(later.output, /holds other art .* Delete the repository first: https:\/\/github.com\/someone\/art\/settings/);
   assert.equal(git(remote, ['rev-parse', 'main']), before, 'nothing pushed');
+});
+
+test('without --remote, publish talks to GitHub as the config says, and a test cannot', () => {
+  const repo = project('h');
+  const result = art(repo, ['publish', '--yes']);
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /gh api repos\/someone\/art --silent failed/);
+});
+
+test('config needs the art repository', () => {
+  assert.throws(() => loadConfig({ ...raw, repo: undefined }), /repo must be owner\/name/);
 });
 
 test('verify fails when a ref does not match the plan', () => {
