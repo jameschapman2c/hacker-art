@@ -6,7 +6,8 @@ the current month.
 
 1. On an up-to-date `main`, run `bin/art publish` (a dry run for today).
    - "already holds this art": the art is current. Report that and stop.
-   - "would create it": the art repository is missing, so no one needs to delete anything.
+   - "would create it", or "would push" without creating: the art repository is missing, empty,
+     or partly published, so no one needs to delete anything.
    - Exit 3, "holds other art": Nico must delete it first.
 2. Start a branch `refresh-<YYYY-MM>` and add a row for today to `docs/refreshes.md`: the date, the
    month's icon, and the days and commits from the dry run's summary. Open a pull request titled
